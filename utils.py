@@ -35,6 +35,26 @@ def location_matches_india(location: str) -> bool:
     return any(kw in loc for kw in LOCATION_KEYWORDS)
 
 
+def experience_looks_fresher(experience_text: str) -> bool:
+    """Parses free-text experience strings like '0-1 Yrs', '1-3 Yrs',
+    '2-4 years', 'Fresher' etc. Returns True if it looks fresher/0-1 yr
+    friendly, False if it clearly requires more, True (default/keep) if
+    unclear so you can judge manually rather than silently losing a
+    listing to a parsing miss.
+    """
+    if not experience_text:
+        return True
+    t = experience_text.lower()
+    if "fresher" in t or "0 " in t or "not specified" in t:
+        return True
+    # extract numbers like "1-3" or "2 - 4" or "3+"
+    nums = re.findall(r"\d+", t)
+    if not nums:
+        return True
+    min_years = int(nums[0])
+    return min_years <= 1
+
+
 def guess_job_type(title: str) -> str:
     t = title.lower()
     if "intern" in t:

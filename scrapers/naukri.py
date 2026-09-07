@@ -14,7 +14,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 
-from utils import title_matches_role, guess_job_type
+from utils import title_matches_role, guess_job_type, experience_looks_fresher
 
 BASE_URL = "https://www.naukri.com/jobapi/v3/search"
 
@@ -32,7 +32,14 @@ HEADERS = {
 }
 
 
-def fetch_naukri(keyword: str = "product manager", experience_years: int = 0, pages: int = 2) -> List[Dict[str, Any]]:
+def fetch_naukri(keyword: str = "product manager", pages: int = 2) -> List[Dict[str, Any]]:
+    """NOTE: we deliberately do NOT send Naukri's own `experience` filter
+    param here — testing showed sending experience=0 returned zero results
+    (it's unclear what values that param actually expects server-side, and
+    getting it wrong silently returns nothing rather than an error). We
+    instead fetch broadly and post-filter using experience_looks_fresher()
+    on each listing's own experienceText field, which is more reliable.
+    """
     out: List[Dict[str, Any]] = []
     for page in range(1, pages + 1):
         params = {
@@ -41,7 +48,6 @@ def fetch_naukri(keyword: str = "product manager", experience_years: int = 0, pa
             "searchType": "adv",
             "keyword": keyword,
             "location": "india",
-            "experience": experience_years,
             "pageNo": page,
             "sort": "f",  # sort by freshness
         }
@@ -61,6 +67,9 @@ def fetch_naukri(keyword: str = "product manager", experience_years: int = 0, pa
             title = job.get("title", "")
             if not title_matches_role(title):
                 continue
+            exp_text = job.get("experienceText", "")
+            if not experience_looks_fresher(exp_text):
+                continue  # e.g. "3-5 Yrs" — not a fresher role, skip
             posted_at = None
             # Naukri gives relative freshness text like "1 day ago" or a
             # footerPlaceholderLabel / createdDate epoch (ms) in some payloads

@@ -77,6 +77,41 @@ Edit `config.py`:
 - `LOCATION_KEYWORDS` — cities/keywords to keep
 - `TIME_WINDOWS` — the dropdown options in the UI
 
+## Reading the Diagnostics panel
+
+After you click "Search Now", expand **"🔧 Diagnostics"** below the results
+count. It shows the raw number of matches each individual source/company
+returned *before* your time/location/type filters are applied. If a source
+shows 0:
+
+- **Greenhouse / Lever / Ashby / Workable entries** → the company slug in
+  `config.py` is almost certainly wrong, or that company doesn't use that
+  ATS anymore. Run `python test_slug.py <platform> <slug>` to confirm
+  before trusting any slug — this was flagged as unverified in the
+  original setup and needs your manual check.
+- **Naukri / Unstop** → their internal (unofficial) endpoint may have
+  changed shape. See the troubleshooting section below.
+- **LinkedIn** → it may be rate-limiting or blocking automated requests
+  that session — this is expected to be inconsistent since it's the
+  least reliable source by design.
+
+## Why LinkedIn results might not look like "fresher" roles
+
+LinkedIn now filters using `f_E=1,2` (LinkedIn's own "Internship" and
+"Entry level" tags, self-selected by whoever posted the job) instead of
+guessing from the title — a plain "Product Manager" title alone can't
+reliably tell you the required experience. If you still see clearly
+senior roles slipping through, that means the poster mis-tagged their own
+listing on LinkedIn's end — there's no further signal this method can
+extract to catch that.
+
+Naukri listings are now filtered using each listing's actual
+`experienceText` field (e.g. "0-1 Yrs", "2-4 Yrs") via
+`experience_looks_fresher()` in `utils.py`, not by guessing from the title
+— this is more reliable than the title-only filtering used for other
+sources. If Naukri experience text is missing/unparseable, the listing is
+kept for you to judge rather than silently dropped.
+
 ## If Naukri or Unstop fetchers stop returning results
 
 These use unofficial internal endpoints, discovered via browser DevTools.

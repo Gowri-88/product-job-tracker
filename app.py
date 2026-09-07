@@ -52,35 +52,44 @@ st.sidebar.caption(
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def run_search(enabled: dict):
+def run_search(enabled: dict, hours: int):
+    """Returns (all_listings, diagnostics) where diagnostics is a dict of
+    source_name -> raw count fetched, BEFORE any time/location/type
+    filtering. This makes silent zero-result sources visible instead of
+    just vanishing from the results table with no explanation."""
     all_listings = []
+    diagnostics = {}
+
+    def track(name, items):
+        diagnostics[name] = diagnostics.get(name, 0) + len(items)
+        return items
 
     if enabled.get("Greenhouse"):
         for slug in GREENHOUSE_COMPANIES:
-            all_listings += fetch_greenhouse(slug)
+            all_listings += track(f"Greenhouse: {slug}", fetch_greenhouse(slug))
     if enabled.get("Lever"):
         for slug in LEVER_COMPANIES:
-            all_listings += fetch_lever(slug)
+            all_listings += track(f"Lever: {slug}", fetch_lever(slug))
     if enabled.get("Ashby"):
         for slug in ASHBY_COMPANIES:
-            all_listings += fetch_ashby(slug)
+            all_listings += track(f"Ashby: {slug}", fetch_ashby(slug))
     if enabled.get("Workable"):
         for slug in WORKABLE_COMPANIES:
-            all_listings += fetch_workable(slug)
+            all_listings += track(f"Workable: {slug}", fetch_workable(slug))
     if enabled.get("Naukri"):
-        all_listings += fetch_naukri("product manager", experience_years=0)
-        all_listings += fetch_naukri("product analyst", experience_years=0)
-        all_listings += fetch_naukri("associate product manager", experience_years=0)
+        all_listings += track("Naukri: product manager", fetch_naukri("product manager"))
+        all_listings += track("Naukri: product analyst", fetch_naukri("product analyst"))
+        all_listings += track("Naukri: APM", fetch_naukri("associate product manager"))
     if enabled.get("Unstop"):
-        all_listings += fetch_unstop("jobs")
-        all_listings += fetch_unstop("internships")
+        all_listings += track("Unstop: jobs", fetch_unstop("jobs"))
+        all_listings += track("Unstop: internships", fetch_unstop("internships"))
     if enabled.get("LinkedIn (best-effort)"):
-        all_listings += fetch_linkedin_public("product manager fresher")
-        all_listings += fetch_linkedin_public("product analyst")
+        all_listings += track("LinkedIn: product manager", fetch_linkedin_public("product manager", hours=hours))
+        all_listings += track("LinkedIn: product analyst", fetch_linkedin_public("product analyst", hours=hours))
     if enabled.get("Wellfound (best-effort)"):
-        all_listings += fetch_wellfound_placeholder("product")
+        all_listings += track("Wellfound", fetch_wellfound_placeholder("product"))
 
-    return all_listings
+    return all_listings, diagnostics
 
 
 # --- Main button -------------------------------------------------------
@@ -93,10 +102,12 @@ with col2:
 if "results" not in st.session_state:
     st.session_state.results = None
     st.session_state.last_run = None
+    st.session_state.diagnostics = None
 
 if search_clicked:
     with st.spinner("Fetching from all enabled sources..."):
-        raw = run_search(enabled_sources)
+        raw, diagnostics = run_search(enabled_sources, time_window_hours)
+        st.session_state.diagnostics = diagnostics
         raw = dedupe(raw)
         raw = [r for r in raw if within_time_window(r["posted_at"], time_window_hours)]
         if india_only:
@@ -113,6 +124,22 @@ if st.session_state.results is not None:
         f"Found {len(results)} matching openings · "
         f"last fetched {st.session_state.last_run.strftime('%Y-%m-%d %H:%M UTC')}"
     )
+
+    with st.expander("🔧 Diagnostics — raw counts per source (before filtering)"):
+        diag = st.session_state.diagnostics or {}
+        zero_sources = [k for k, v in diag.items() if v == 0]
+        if diag:
+            diag_df = pd.DataFrame(sorted(diag.items()), columns=["Source", "Raw matches found"])
+            st.dataframe(diag_df, use_container_width=True, hide_index=True)
+        if zero_sources:
+            st.warning(
+                f"{len(zero_sources)} source(s) returned 0 results: "
+                f"{', '.join(zero_sources)}. For Greenhouse/Lever/Ashby/Workable "
+                f"entries, this usually means the company slug in config.py is "
+                f"wrong or they've switched ATS — verify with `python test_slug.py "
+                f"<platform> <slug>`. For Naukri/Unstop, their internal endpoint "
+                f"may have changed — see README troubleshooting section."
+            )
 
     if results:
         df = pd.DataFrame(results)
