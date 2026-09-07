@@ -112,6 +112,51 @@ Naukri listings are now filtered using each listing's actual
 sources. If Naukri experience text is missing/unparseable, the listing is
 kept for you to judge rather than silently dropped.
 
+## Running bulk_test_slugs.py (faster than testing one company at a time)
+
+```bash
+python bulk_test_slugs.py
+```
+
+This tries a batch of slug guesses per platform in one run and prints
+which ones actually resolve, plus a ready-to-paste block for `config.py`.
+Edit the `CANDIDATES` dict inside the file to add more companies/guesses.
+
+**Why slugs are often wrong on the first guess:** many companies' ATS
+slug is their *full legal entity name*, not their brand name — e.g.
+Razorpay's real Greenhouse slug is `razorpaysoftwareprivatelimited`, not
+`razorpay`. CRED's legal entity is Dreamplug Technologies, Meesho's is
+Fashnear Technologies, Groww's is NextBillion/Billionbrains, Swiggy's is
+Bundl Technologies — the bulk tester includes these variants.
+
+## Important: if EVERY source shows 0 at once (Naukri + Unstop + LinkedIn + Greenhouse together)
+
+If literally everything returns 0 simultaneously, that's a different
+problem than "some slugs are wrong" — it suggests **Streamlit Cloud's
+outbound IP address is being blocked or rate-limited** by these sites.
+This is common and expected: Naukri, LinkedIn, and similar sites actively
+detect and block traffic from cloud-hosting IP ranges (AWS/GCP/Azure —
+which is what Streamlit Community Cloud runs on) far more aggressively
+than they'd block a normal home internet connection, because that's
+exactly the kind of traffic pattern bots use.
+
+**How to confirm this:**
+1. Run `streamlit run app.py` locally on your own laptop (not the deployed
+   cloud version) and click Search Now with the same filters.
+2. If you get real results locally but still 0 on the Streamlit Cloud
+   version, that confirms it's IP-based blocking, not a code or slug bug.
+
+**If confirmed, the practical takeaway:**
+- **Greenhouse/Lever/Ashby/Workable** (once slugs are correct) are
+  official APIs and generally tolerate cloud IPs fine — these should keep
+  working on your hosted app.
+- **Naukri/Unstop/LinkedIn** may only reliably work when you run the app
+  **locally** on your own laptop, not via the public Streamlit Cloud URL.
+  There's no free way around this — it's the site's own anti-bot system
+  targeting datacenter IPs, not something fixable in this code. Treat your
+  hosted app as your Greenhouse/Lever/Ashby feed, and run the local
+  version occasionally for a broader sweep including Naukri/Unstop.
+
 ## If Naukri or Unstop fetchers stop returning results
 
 These use unofficial internal endpoints, discovered via browser DevTools.

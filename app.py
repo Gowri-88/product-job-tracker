@@ -63,11 +63,13 @@ def run_search(enabled: dict, hours: int):
     def track(name, fetch_fn):
         """Runs one fetcher safely: if it raises ANYTHING unexpected, the
         rest of the search still completes instead of crashing the whole
-        app (which is exactly what happened before this fix)."""
+        app. The full error message (not just the exception type) is now
+        captured so it's visible right in the Diagnostics panel — no need
+        to dig through Streamlit Cloud's server logs."""
         try:
             items = fetch_fn()
         except Exception as e:
-            diagnostics[name] = f"ERROR: {type(e).__name__}"
+            diagnostics[name] = f"ERROR: {type(e).__name__}: {e}"[:200]
             return []
         diagnostics[name] = len(items)
         return items

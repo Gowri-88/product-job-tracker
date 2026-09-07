@@ -59,14 +59,17 @@ LOCATION_KEYWORDS = [
 # ---------------------------------------------------------------------------
 
 GREENHOUSE_COMPANIES = [
-    "razorpay",
-    "postman",
+    "razorpaysoftwareprivatelimited",  # verified — "razorpay" was WRONG, this is correct
+    "postman",  # verified correct
+    # The following were unverified guesses and likely wrong (same mistake
+    # as razorpay above — many companies' Greenhouse slug is their full
+    # legal name, not their brand name). Run bulk_test_slugs.py to check
+    # and replace them, or remove any that don't resolve.
     "freshworks",
     "chargebee",
     "browserstack",
     "unacademy",
     "cred",
-    # add more slugs here after verifying with test_slug.py
 ]
 
 LEVER_COMPANIES = [
