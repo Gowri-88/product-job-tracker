@@ -60,34 +60,42 @@ def run_search(enabled: dict, hours: int):
     all_listings = []
     diagnostics = {}
 
-    def track(name, items):
-        diagnostics[name] = diagnostics.get(name, 0) + len(items)
+    def track(name, fetch_fn):
+        """Runs one fetcher safely: if it raises ANYTHING unexpected, the
+        rest of the search still completes instead of crashing the whole
+        app (which is exactly what happened before this fix)."""
+        try:
+            items = fetch_fn()
+        except Exception as e:
+            diagnostics[name] = f"ERROR: {type(e).__name__}"
+            return []
+        diagnostics[name] = len(items)
         return items
 
     if enabled.get("Greenhouse"):
         for slug in GREENHOUSE_COMPANIES:
-            all_listings += track(f"Greenhouse: {slug}", fetch_greenhouse(slug))
+            all_listings += track(f"Greenhouse: {slug}", lambda s=slug: fetch_greenhouse(s))
     if enabled.get("Lever"):
         for slug in LEVER_COMPANIES:
-            all_listings += track(f"Lever: {slug}", fetch_lever(slug))
+            all_listings += track(f"Lever: {slug}", lambda s=slug: fetch_lever(s))
     if enabled.get("Ashby"):
         for slug in ASHBY_COMPANIES:
-            all_listings += track(f"Ashby: {slug}", fetch_ashby(slug))
+            all_listings += track(f"Ashby: {slug}", lambda s=slug: fetch_ashby(s))
     if enabled.get("Workable"):
         for slug in WORKABLE_COMPANIES:
-            all_listings += track(f"Workable: {slug}", fetch_workable(slug))
+            all_listings += track(f"Workable: {slug}", lambda s=slug: fetch_workable(s))
     if enabled.get("Naukri"):
-        all_listings += track("Naukri: product manager", fetch_naukri("product manager"))
-        all_listings += track("Naukri: product analyst", fetch_naukri("product analyst"))
-        all_listings += track("Naukri: APM", fetch_naukri("associate product manager"))
+        all_listings += track("Naukri: product manager", lambda: fetch_naukri("product manager"))
+        all_listings += track("Naukri: product analyst", lambda: fetch_naukri("product analyst"))
+        all_listings += track("Naukri: APM", lambda: fetch_naukri("associate product manager"))
     if enabled.get("Unstop"):
-        all_listings += track("Unstop: jobs", fetch_unstop("jobs"))
-        all_listings += track("Unstop: internships", fetch_unstop("internships"))
+        all_listings += track("Unstop: jobs", lambda: fetch_unstop("jobs"))
+        all_listings += track("Unstop: internships", lambda: fetch_unstop("internships"))
     if enabled.get("LinkedIn (best-effort)"):
-        all_listings += track("LinkedIn: product manager", fetch_linkedin_public("product manager", hours=hours))
-        all_listings += track("LinkedIn: product analyst", fetch_linkedin_public("product analyst", hours=hours))
+        all_listings += track("LinkedIn: product manager", lambda: fetch_linkedin_public("product manager", hours=hours))
+        all_listings += track("LinkedIn: product analyst", lambda: fetch_linkedin_public("product analyst", hours=hours))
     if enabled.get("Wellfound (best-effort)"):
-        all_listings += track("Wellfound", fetch_wellfound_placeholder("product"))
+        all_listings += track("Wellfound", lambda: fetch_wellfound_placeholder("product"))
 
     return all_listings, diagnostics
 
@@ -106,7 +114,14 @@ if "results" not in st.session_state:
 
 if search_clicked:
     with st.spinner("Fetching from all enabled sources..."):
-        raw, diagnostics = run_search(enabled_sources, time_window_hours)
+        try:
+            raw, diagnostics = run_search(enabled_sources, time_window_hours)
+        except Exception as e:
+            st.error(
+                f"Something went wrong during the search ({type(e).__name__}). "
+                f"This shouldn't happen — please share this error message so it can be fixed."
+            )
+            raw, diagnostics = [], {}
         st.session_state.diagnostics = diagnostics
         raw = dedupe(raw)
         raw = [r for r in raw if within_time_window(r["posted_at"], time_window_hours)]
@@ -127,18 +142,19 @@ if st.session_state.results is not None:
 
     with st.expander("🔧 Diagnostics — raw counts per source (before filtering)"):
         diag = st.session_state.diagnostics or {}
-        zero_sources = [k for k, v in diag.items() if v == 0]
+        zero_or_error = [k for k, v in diag.items() if v == 0 or (isinstance(v, str) and v.startswith("ERROR"))]
         if diag:
-            diag_df = pd.DataFrame(sorted(diag.items()), columns=["Source", "Raw matches found"])
+            diag_df = pd.DataFrame(sorted(diag.items()), columns=["Source", "Result"])
             st.dataframe(diag_df, use_container_width=True, hide_index=True)
-        if zero_sources:
+        if zero_or_error:
             st.warning(
-                f"{len(zero_sources)} source(s) returned 0 results: "
-                f"{', '.join(zero_sources)}. For Greenhouse/Lever/Ashby/Workable "
+                f"{len(zero_or_error)} source(s) returned nothing or errored: "
+                f"{', '.join(zero_or_error)}. For Greenhouse/Lever/Ashby/Workable "
                 f"entries, this usually means the company slug in config.py is "
                 f"wrong or they've switched ATS — verify with `python test_slug.py "
                 f"<platform> <slug>`. For Naukri/Unstop, their internal endpoint "
-                f"may have changed — see README troubleshooting section."
+                f"may have changed — see README troubleshooting section. Sources "
+                f"that error out no longer crash the app — they're just skipped."
             )
 
     if results:

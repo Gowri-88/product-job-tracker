@@ -44,30 +44,33 @@ def fetch_unstop(opportunity_type: str = "jobs", pages: int = 2) -> List[Dict[st
         except (requests.RequestException, ValueError):
             break
 
-        items = (data.get("data") or {}).get("data", [])
+        items = (data.get("data") or {}).get("data", []) if isinstance(data, dict) else []
         if not items:
             break
 
         for job in items:
-            title = job.get("title", "")
-            if not title_matches_role(title):
-                continue
-            posted_at = None
-            if job.get("start_date"):
-                try:
-                    posted_at = datetime.fromisoformat(job["start_date"].replace("Z", "+00:00"))
-                except ValueError:
-                    pass
+            try:
+                title = job.get("title", "")
+                if not title_matches_role(title):
+                    continue
+                posted_at = None
+                if job.get("start_date"):
+                    try:
+                        posted_at = datetime.fromisoformat(job["start_date"].replace("Z", "+00:00"))
+                    except (ValueError, AttributeError):
+                        pass
 
-            organisation = job.get("organisation", {})
-            out.append({
-                "title": title,
-                "company": organisation.get("name", "Unknown") if isinstance(organisation, dict) else "Unknown",
-                "location": job.get("region", "India") or "India",
-                "experience": "Fresher / Entry-level",
-                "posted_at": posted_at,
-                "apply_url": f"https://unstop.com/{job.get('public_url', '')}",
-                "source": "Unstop",
-                "job_type": "Internship" if opportunity_type == "internships" else guess_job_type(title),
-            })
+                organisation = job.get("organisation", {})
+                out.append({
+                    "title": title,
+                    "company": organisation.get("name", "Unknown") if isinstance(organisation, dict) else "Unknown",
+                    "location": job.get("region") or "India",
+                    "experience": "Fresher / Entry-level",
+                    "posted_at": posted_at,
+                    "apply_url": f"https://unstop.com/{job.get('public_url', '')}",
+                    "source": "Unstop",
+                    "job_type": "Internship" if opportunity_type == "internships" else guess_job_type(title),
+                })
+            except Exception:
+                continue
     return out

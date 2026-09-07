@@ -59,35 +59,42 @@ def fetch_naukri(keyword: str = "product manager", pages: int = 2) -> List[Dict[
         except (requests.RequestException, ValueError):
             break
 
-        job_details = data.get("jobDetails", [])
+        job_details = data.get("jobDetails", []) if isinstance(data, dict) else []
         if not job_details:
             break
 
         for job in job_details:
-            title = job.get("title", "")
-            if not title_matches_role(title):
-                continue
-            exp_text = job.get("experienceText", "")
-            if not experience_looks_fresher(exp_text):
-                continue  # e.g. "3-5 Yrs" — not a fresher role, skip
-            posted_at = None
-            # Naukri gives relative freshness text like "1 day ago" or a
-            # footerPlaceholderLabel / createdDate epoch (ms) in some payloads
-            created_ms = job.get("createdDate")
-            if created_ms:
-                try:
-                    posted_at = datetime.fromtimestamp(int(created_ms) / 1000, tz=timezone.utc)
-                except (ValueError, OSError):
-                    pass
+            try:
+                title = job.get("title", "")
+                if not title_matches_role(title):
+                    continue
+                exp_text = job.get("experienceText", "")
+                if not experience_looks_fresher(exp_text):
+                    continue  # e.g. "3-5 Yrs" — not a fresher role, skip
+                posted_at = None
+                # Naukri gives relative freshness text like "1 day ago" or a
+                # footerPlaceholderLabel / createdDate epoch (ms) in some payloads
+                created_ms = job.get("createdDate")
+                if created_ms:
+                    try:
+                        posted_at = datetime.fromtimestamp(int(created_ms) / 1000, tz=timezone.utc)
+                    except (ValueError, OSError, TypeError):
+                        pass
 
-            out.append({
-                "title": title,
-                "company": job.get("companyName", "Unknown"),
-                "location": job.get("placeholders", {}).get("location", "") if isinstance(job.get("placeholders"), dict) else job.get("location", ""),
-                "experience": job.get("experienceText", "Not specified"),
-                "posted_at": posted_at,
-                "apply_url": "https://www.naukri.com" + job.get("jdURL", "") if job.get("jdURL", "").startswith("/") else job.get("jdURL", ""),
-                "source": "Naukri",
-                "job_type": guess_job_type(title),
-            })
+                jd_url = job.get("jdURL") or ""
+                apply_url = ("https://www.naukri.com" + jd_url) if jd_url.startswith("/") else jd_url
+
+                out.append({
+                    "title": title,
+                    "company": job.get("companyName", "Unknown"),
+                    "location": job.get("placeholders", {}).get("location", "") if isinstance(job.get("placeholders"), dict) else (job.get("location") or ""),
+                    "experience": exp_text or "Not specified",
+                    "posted_at": posted_at,
+                    "apply_url": apply_url,
+                    "source": "Naukri",
+                    "job_type": guess_job_type(title),
+                })
+            except Exception:
+                # one malformed job record shouldn't kill the whole fetch
+                continue
     return out
